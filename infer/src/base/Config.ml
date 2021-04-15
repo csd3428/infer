@@ -1612,6 +1612,14 @@ and liveness_dangerous_classes =
      $(i,unique_ptr<type>)) will count as dead stores when the variables are not read explicitly \
      by the program."
 
+and mychecker_dangerous_classes =
+  CLOpt.mk_json ~long:"mychecker-dangerous-classes"
+    ~in_help:InferCommand.[(Analyze, manual_clang)]
+    "Specify classes where the destructor should be ignored when computing mychecker. In other \
+     words, assignement to variables of these types (or common wrappers around these types such as \
+     $(i,unique_ptr<type>)) will count as dead stores when the variables are not read explicitly \
+     by the program."
+
 
 and liveness_ignored_constant =
   CLOpt.mk_string_list ~default:["0"] ~long:"liveness-ignored-constant"
@@ -3126,6 +3134,8 @@ and list_checkers = !list_checkers
 and list_issue_types = !list_issue_types
 
 and liveness_dangerous_classes = !liveness_dangerous_classes
+
+and mychecker_dangerous_classes = !mychecker_dangerous_classes
 
 and liveness_ignored_constant = RevList.to_list !liveness_ignored_constant
 

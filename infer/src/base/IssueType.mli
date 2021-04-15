@@ -149,6 +149,8 @@ val dangling_pointer_dereference_maybe : t
 
 val dead_store : t
 
+val my_dead_store : t
+
 val deadlock : t
 
 val divide_by_zero : t

@@ -39,6 +39,7 @@ type t =
   | Starvation
   | Topl
   | Uninit
+  | MyChecker
 [@@deriving equal, enumerate]
 
 type support = NoSupport | ExperimentalSupport | Support
@@ -425,6 +426,14 @@ let config_unsafe checker =
       ; kind= UserFacing {title= "Uninitialized Value"; markdown_body= ""}
       ; support= supports_clang
       ; short_documentation= "Warns when values are used before having been initialized."
+      ; cli_flags= Some {deprecated= []; show_in_help= true}
+      ; enabled_by_default= true
+      ; activates= [] }
+  | MyChecker ->
+      { id= "mychecker"
+      ; kind= UserFacing {title= "MyChecker"; markdown_body= ""}
+      ; support= supports_clang
+      ; short_documentation= "Detection of dead stores and unused variables."
       ; cli_flags= Some {deprecated= []; show_in_help= true}
       ; enabled_by_default= true
       ; activates= [] }

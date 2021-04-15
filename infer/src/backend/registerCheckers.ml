@@ -199,7 +199,8 @@ let all_checkers =
              Payloads.Fields.buffer_overrun_analysis Payloads.Fields.config_impact_analysis
              Payloads.Fields.cost ConfigImpactAnalysis.checker
          in
-         [(checker, Clang); (checker, Java)] ) } ]
+         [(checker, Clang); (checker, Java)] ) } 
+  ; {checker= MyChecker; callbacks= [(intraprocedural MyChecker.checker, Clang)]} ]
 
 
 let get_active_checkers () =

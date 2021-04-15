@@ -454,7 +454,10 @@ let dead_store =
   register ~id:"DEAD_STORE" Error Liveness
     ~user_documentation:[%blob "../../documentation/issues/DEAD_STORE.md"]
 
-
+let my_dead_store =
+  register ~id:"MY_DEAD_STORE" Error MyChecker
+    ~user_documentation:[%blob "../../documentation/issues/DEAD_STORE.md"]
+    
 let deadlock =
   register ~id:"DEADLOCK" Error Starvation
     ~user_documentation:[%blob "../../documentation/issues/DEADLOCK.md"]

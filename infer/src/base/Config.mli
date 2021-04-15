@@ -395,6 +395,8 @@ val list_issue_types : bool
 
 val liveness_dangerous_classes : Yojson.Basic.t
 
+val mychecker_dangerous_classes : Yojson.Basic.t
+
 val liveness_ignored_constant : string list
 
 val load_average : float option

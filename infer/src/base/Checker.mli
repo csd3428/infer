@@ -38,6 +38,7 @@ type t =
   | Starvation
   | Topl
   | Uninit
+  | MyChecker
 [@@deriving equal, enumerate]
 
 (** per-language support for each checker *)

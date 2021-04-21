@@ -10,12 +10,30 @@ module F = Format
 module L = Logging
 
 type effectTuple = {
-  priorEffect : string;
-  currentEffect : string;
-  futureEffect : string;
+  mutable priorEffect : string;
+  mutable currentEffect : string;
+  mutable futureEffect : string
 }
 
 let effectList = ref []
+
+let rec print_effect_list list =
+    match list with
+    | [] -> print_endline ""
+    | head :: body ->
+    begin
+      Printf.printf "%s -> %s -> %s\n" head.priorEffect head.currentEffect head.futureEffect;
+      print_effect_list body;
+    end
+
+let list_get_first list =
+    match list with
+    | head :: _ -> head
+
+(* let rec list_get_last list =
+  match list with
+  | [x] -> x
+  | _ :: tail -> list_get_last tail *)
 
 (** backward analysis for computing set of maybe-live variables at each program point *)
 
@@ -204,16 +222,30 @@ module TransferFunctions (LConfig : MyCheckerConfig) (CFG : ProcCfg.S) = struct
         (* dummy deref inserted by frontend--don't count as a read *)
         astate
     | Sil.Load {id= lhs_id; e= rhs_exp} ->
-        Printf.printf "Load %s %s\n" (Ident.to_string lhs_id) (Exp.to_string rhs_exp);
-        let currInstr = Printf.sprintf "Load %s %s\n" (Ident.to_string lhs_id) (Exp.to_string rhs_exp) in
-          let effect = { priorEffect = ""; currentEffect = currInstr; futureEffect = "" } in
-            effectList := effect :: !effectList;
+        (* Printf.printf "Load %s %s\n" (Ident.to_string lhs_id) (Exp.to_string rhs_exp); *)
+        let currInstr = Printf.sprintf "Load %s %s" (Ident.to_string lhs_id) (Exp.to_string rhs_exp) in
+        let future = 
+          if((List.length !effectList) > 0) then
+            (list_get_first !effectList).currentEffect
+          else "()" in
+        if((List.length !effectList) > 0) then
+          (list_get_first !effectList).priorEffect <- currInstr;
+        let effect = { priorEffect = "()"; currentEffect = currInstr; futureEffect = future } in
+        effectList := effect :: !effectList;
+        (* Printf.printf "Added %s %s %s\n" effect.priorEffect effect.currentEffect effect.futureEffect;  *)
         Domain.remove (Var.of_id lhs_id) astate |> exp_add_live rhs_exp
     | Sil.Store {e1= Lvar lhs_pvar; e2= rhs_exp} ->
-        Printf.printf "Store: %s %s\n" (Pvar.to_string lhs_pvar) (Exp.to_string rhs_exp);
-        let currInstr = Printf.sprintf "Store: %s %s\n" (Pvar.to_string lhs_pvar) (Exp.to_string rhs_exp) in
-          let effect = { priorEffect = ""; currentEffect = currInstr; futureEffect = "" } in
-            effectList := effect :: !effectList;
+        (* Printf.printf "Store: %s %s\n" (Pvar.to_string lhs_pvar) (Exp.to_string rhs_exp); *)
+        let currInstr = Printf.sprintf "Store: %s %s" (Pvar.to_string lhs_pvar) (Exp.to_string rhs_exp) in
+        let future = 
+          if((List.length !effectList) > 0) then
+            (list_get_first !effectList).currentEffect
+          else "()" in
+        if((List.length !effectList) > 0) then
+          (list_get_first !effectList).priorEffect <- currInstr;
+        let effect = { priorEffect = "()"; currentEffect = currInstr; futureEffect = future } in
+        effectList := effect :: !effectList;
+        (* Printf.printf "Added %s %s %s\n" effect.priorEffect effect.currentEffect effect.futureEffect; *)
         let astate' =
           if is_always_in_scope proc_desc lhs_pvar then astate (* never kill globals *)
           else Domain.remove (Var.of_pvar lhs_pvar) astate
@@ -231,8 +263,8 @@ module TransferFunctions (LConfig : MyCheckerConfig) (CFG : ProcCfg.S) = struct
     | Sil.Call ((ret_id, _), call_exp, actuals, _, {CallFlags.cf_assign_last_arg}) ->
         Printf.printf "Call: %s " (Exp.to_string call_exp);
         let currInstr = Printf.sprintf "Call: %s " (Exp.to_string call_exp) in
-          let effect = { priorEffect = ""; currentEffect = currInstr; futureEffect = "" } in
-            effectList := effect :: !effectList;
+        let effect = { priorEffect = ""; currentEffect = currInstr; futureEffect = "" } in
+        effectList := effect :: !effectList;
         print_list actuals;
         let actuals_to_read, astate =
           if cf_assign_last_arg then
@@ -253,7 +285,6 @@ module TransferFunctions (LConfig : MyCheckerConfig) (CFG : ProcCfg.S) = struct
         Domain.try_entry try_id astate
     | Sil.Metadata _ ->
         astate
-
 
   let pp_session_name node fmt = F.fprintf fmt "mychecker %a" CFG.Node.pp_id (CFG.Node.id node)
 end
@@ -399,7 +430,7 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
     let ltr = [Errlog.make_trace_element 0 loc "Write of unused value" []] in
     Reporting.log_issue proc_desc err_log ~loc ~ltr MyChecker IssueType.my_dead_store message
   in
-  let report_dead_store live_vars passed_by_ref_vars = function
+   let report_dead_store live_vars passed_by_ref_vars = function
     | Sil.Store {e1= Lvar pvar; typ; e2= rhs_exp; loc}
       when should_report pvar typ live_vars passed_by_ref_vars && not (is_sentinel_exp rhs_exp) ->
         log_report pvar typ loc
@@ -433,7 +464,5 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
         | None ->
             () )
   in
-  Container.iter cfg ~fold:CFG.fold_nodes ~f:report_on_node
-
-(* let () = List.iter 
-    (fun effect -> Printf.printf "%s %s %s" effect.priorEffect effect.currentEffect effect.futureEffect) !effectList *)
+  Container.iter cfg ~fold:CFG.fold_nodes ~f:report_on_node;
+  print_effect_list !effectList

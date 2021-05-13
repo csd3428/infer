@@ -29,7 +29,7 @@ val checker : IntraproceduralAnalysis.t -> unit
 val is_always_in_scope : Procdesc.t -> Pvar.t -> bool
 
 type effectTuple = {
-  mutable priorEffect : string;
+  mutable priorEffect : string list;
   mutable currentEffect : string;
-  mutable futureEffect : string
+  mutable futureEffect : string list
 }

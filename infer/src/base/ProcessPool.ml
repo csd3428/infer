@@ -270,7 +270,7 @@ let process_updates pool buffer =
            | Idle ->
                L.die InternalError "Received a Ready message from an idle worker@." ) ;
            TaskBar.set_remaining_tasks pool.task_bar (pool.tasks.remaining_tasks ()) ;
-           TaskBar.update_status pool.task_bar ~slot (Mtime_clock.now ()) "idle" ;
+           TaskBar.update_status pool.task_bar ~slot (Mtime_clock.now ()) "" ;
            pool.children_states.(slot) <- Idle ) ;
   (* try to schedule more work if there are idle workers *)
   if not (pool.tasks.is_empty ()) then

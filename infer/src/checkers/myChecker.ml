@@ -18,37 +18,68 @@ type effectTuple = {
 let effectList = ref []
 let counter = ref 0
 
-let rec print_list list =
-  match list with
-  | [] -> print_endline ""
-  | head :: body ->
-  begin
-    Printf.printf "%s, " head;
-    print_list body;
-  end
-
-let rec print_effect_list list =
-    match list with
-    | [] -> print_endline ""
-    | head :: body ->
-    begin
-      print_list head.priorEffect;
-      Printf.printf "-> %s -> " head.currentEffect;
-      print_list head.futureEffect;
-      Printf.printf "\n";
-      print_effect_list body;
-    end
-
 let list_get_first list =
     match list with
     | head :: _ -> head
 
-(* let rec list_get_last list =
+let rec print_list list index counter mode =
   match list with
-  | [x] -> x
-  | _ :: tail -> list_get_last tail *)
+  | [] -> print_endline ""
+  | [last] -> Printf.printf "%s} " last
+  | head :: body ->
+  begin
+    if(counter == 0) then
+      if(mode == "prior") then
+        Printf.printf "\027[0;33mα%d:\027[0m { %s, " index head
+      else Printf.printf "\027[0;31mω%d:\027[0m { %s, " index head
+    else Printf.printf "%s, " head;
+    print_list body index (counter+1) "prior";
+  end
 
-(** backward analysis for computing set of maybe-live variables at each program point *)
+let rec print_effect_list list counter =
+    match list with
+    | [] -> print_endline ""
+    | head :: body ->
+    begin
+      print_list head.priorEffect counter 0 "prior";
+      Printf.printf "-> \027[0;32mε%d:\027[0m %s -> " counter head.currentEffect;
+      print_list head.futureEffect counter 0 "future";
+      Printf.printf "\n";
+      print_effect_list body (counter+1);
+    end
+
+let rec list_exists list instr =
+    match list with
+    [] -> false
+    | head :: body ->
+    begin
+      if(head == instr) then
+        true
+      else list_exists body instr
+    end
+
+let rec compare_prior_effects list counter =
+    match list with
+    | [] -> print_endline ""
+    | [last] -> print_endline ""
+    | first_eff :: rest_effs ->
+    begin
+      let next = (list_get_first rest_effs).priorEffect in
+      let first_prior_eff = first_eff.priorEffect in
+      let rec list_contains next first_prior_eff =
+        match first_prior_eff with
+        | [] -> true
+        | head :: body ->
+        begin
+          if(not(list_exists next head)) then
+            false
+          else list_contains next body;
+        end
+      in
+      if(list_contains next first_prior_eff) then
+        Printf.printf "α%d < α%d | " counter (counter+1);
+      compare_prior_effects rest_effs (counter+1);
+    end
 
 module VarSet = AbstractDomain.FiniteSet (Var)
 
@@ -220,15 +251,6 @@ module TransferFunctions (LConfig : MyCheckerConfig) (CFG : ProcCfg.S) = struct
   let add_live_actuals actuals live_acc =
     let actuals = List.map actuals ~f:(fun (e, _) -> Exp.ignore_cast e) in
     List.fold actuals ~f:(fun acc_ exp -> exp_add_live exp acc_) ~init:live_acc
-
-  (* let rec print_list list =
-      match list with
-      | [] -> print_endline ""
-      | head :: body ->
-      begin
-        Printf.printf "%s " (Exp.to_string (fst head));
-        print_list body;
-      end *)
 
   let rec get_future_effects list futures =
     match list with
@@ -494,4 +516,5 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
             () )
   in
   Container.iter cfg ~fold:CFG.fold_nodes ~f:report_on_node;
-  print_effect_list !effectList  
+  print_effect_list !effectList 0;
+  compare_prior_effects !effectList 0;

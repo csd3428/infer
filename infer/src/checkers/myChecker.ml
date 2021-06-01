@@ -37,49 +37,62 @@ let rec print_list list index counter mode =
   end
 
 let rec print_effect_list list counter =
-    match list with
-    | [] -> print_endline ""
-    | head :: body ->
-    begin
-      print_list head.priorEffect counter 0 "prior";
-      Printf.printf "-> \027[0;32mε%d:\027[0m %s -> " counter head.currentEffect;
-      print_list head.futureEffect counter 0 "future";
-      Printf.printf "\n";
-      print_effect_list body (counter+1);
-    end
+  match list with
+  | [] -> print_endline ""
+  | head :: body ->
+  begin
+    print_list head.priorEffect counter 0 "prior";
+    Printf.printf "-> \027[0;32mε%d:\027[0m %s -> " counter head.currentEffect;
+    print_list head.futureEffect counter 0 "future";
+    Printf.printf "\n";
+    print_effect_list body (counter+1);
+  end
 
 let rec list_exists list instr =
-    match list with
-    [] -> false
-    | head :: body ->
-    begin
-      if(head == instr) then
-        true
-      else list_exists body instr
-    end
+  match list with
+  [] -> false
+  | head :: body ->
+  begin
+    if(head == instr) then
+      true
+    else list_exists body instr
+  end
+
+let rec list_contains needle haystack =
+      match needle with
+      | [] -> true
+      | head :: body ->
+      begin
+        if(not(list_exists haystack head)) then
+          false
+        else list_contains body haystack;
+      end
 
 let rec compare_prior_effects list counter =
-    match list with
-    | [] -> print_endline ""
-    | [last] -> print_endline ""
-    | first_eff :: rest_effs ->
-    begin
-      let next = (list_get_first rest_effs).priorEffect in
-      let first_prior_eff = first_eff.priorEffect in
-      let rec list_contains next first_prior_eff =
-        match first_prior_eff with
-        | [] -> true
-        | head :: body ->
-        begin
-          if(not(list_exists next head)) then
-            false
-          else list_contains next body;
-        end
-      in
-      if(list_contains next first_prior_eff) then
-        Printf.printf "α%d < α%d | " counter (counter+1);
-      compare_prior_effects rest_effs (counter+1);
-    end
+  match list with
+  | [] -> print_endline ""
+  | [last] -> print_endline ""
+  | first_eff :: rest_effs ->
+  begin
+    let next = (list_get_first rest_effs).priorEffect in
+    let first_prior_eff = first_eff.priorEffect in
+    if(list_contains first_prior_eff next) then
+      Printf.printf "α%d < α%d | " counter (counter+1);
+    compare_prior_effects rest_effs (counter+1);
+  end
+
+let rec compare_future_effects list counter =
+  match list with
+  | [] -> print_endline ""
+  | [last] -> print_endline ""
+  | first_eff :: rest_effs ->
+  begin
+    let next = (list_get_first rest_effs).futureEffect in
+    let first_future_effect = first_eff.futureEffect in
+    if(list_contains next first_future_effect) then
+      Printf.printf "ω%d > ω%d | " counter (counter+1);
+    compare_future_effects rest_effs (counter+1);
+  end
 
 module VarSet = AbstractDomain.FiniteSet (Var)
 
@@ -518,3 +531,4 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
   Container.iter cfg ~fold:CFG.fold_nodes ~f:report_on_node;
   print_effect_list !effectList 0;
   compare_prior_effects !effectList 0;
+  compare_future_effects !effectList 0;

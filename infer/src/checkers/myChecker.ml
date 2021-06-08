@@ -25,7 +25,14 @@ let list_get_first list =
 let rec print_list list index counter mode =
   match list with
   | [] -> print_endline ""
-  | [last] -> Printf.printf "%s} " last
+  | [last] ->
+  begin
+    if(counter == 0) then
+      if(mode == "prior") then
+        Printf.printf "\027[0;33mα%d:\027[0m { %s } " index last
+      else Printf.printf "\027[0;31mω%d:\027[0m { %s } " index last
+    else Printf.printf "%s } " last;
+  end
   | head :: body ->
   begin
     if(counter == 0) then
@@ -272,8 +279,6 @@ module TransferFunctions (LConfig : MyCheckerConfig) (CFG : ProcCfg.S) = struct
     begin
       futures := head.currentEffect :: !futures;
       get_future_effects body futures
-      (* Printf.printf "%s" head.currentEffect *)
-      (* head.currentEffect *)
     end
 
   let rec append_prior_effects list currInstr =
@@ -326,10 +331,6 @@ module TransferFunctions (LConfig : MyCheckerConfig) (CFG : ProcCfg.S) = struct
         Domain.remove (Var.of_id ret_id) astate
     | Sil.Call ((ret_id, _), call_exp, actuals, _, {CallFlags.cf_assign_last_arg}) ->
         Printf.printf "Call: %s " (Exp.to_string call_exp);
-        (* let currInstr = Printf.sprintf "Call: %s " (Exp.to_string call_exp) in
-        let effect = { priorEffect = ""; currentEffect = currInstr; futureEffect = "" } in
-        effectList := effect :: !effectList; *)
-        (* print_list actuals; *)
         let actuals_to_read, astate =
           if cf_assign_last_arg then
             match IList.split_last_rev actuals with

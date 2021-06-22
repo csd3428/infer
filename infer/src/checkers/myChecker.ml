@@ -290,11 +290,19 @@ module TransferFunctions (LConfig : MyCheckerConfig) (CFG : ProcCfg.S) = struct
       append_prior_effects body currInstr
     end
 
+  let print_node node =
+    let instrs = Procdesc.Node.get_instrs node in
+    Instrs.pp Pp.text F.std_formatter instrs
+
   let exec_instr astate proc_desc _ _ = function
     | Sil.Load {id= lhs_id} when Ident.is_none lhs_id ->
         (* dummy deref inserted by frontend--don't count as a read *)
         astate
     | Sil.Load {id= lhs_id; e= rhs_exp} ->
+    (* Printf.printf "%s" proc_desc.attributes; *)
+        (* let _ = Domain.pp F.std_formatter astate in *)
+        (* let start_node = Procdesc.get_start_node proc_desc in
+        let _ = print_node start_node in *)
         (* Printf.printf "Load %s %s\n" (Ident.to_string lhs_id) (Exp.to_string rhs_exp); *)
         let currInstr = Printf.sprintf "Load %s %s" (Ident.to_string lhs_id) (Exp.to_string rhs_exp) in
         let futures = ref [] in
@@ -307,6 +315,8 @@ module TransferFunctions (LConfig : MyCheckerConfig) (CFG : ProcCfg.S) = struct
         Domain.remove (Var.of_id lhs_id) astate |> exp_add_live rhs_exp
     | Sil.Store {e1= Lvar lhs_pvar; e2= rhs_exp} ->
         (* Printf.printf "Store: %s %s\n" (Pvar.to_string lhs_pvar) (Exp.to_string rhs_exp); *)
+        (* let _ = Domain.pp F.std_formatter astate in *)
+        (* let _ = Procdesc.iter_instrs F.std_formatter proc_desc in *)
         let currInstr = Printf.sprintf "Store: %s %s" (Pvar.to_string lhs_pvar) (Exp.to_string rhs_exp) in
         let futures = ref [] in
         let future = get_future_effects !effectList futures in
@@ -442,6 +452,58 @@ let ignored_constants =
 
 
 let checker {IntraproceduralAnalysis.proc_desc; err_log} =
+  let rec traverse_succs succs =
+    match succs with
+    | [] -> ()
+    | head :: tail ->
+    begin
+      Printf.printf "Node ";
+      Procdesc.Node.pp_id F.std_formatter (Procdesc.Node.get_id head);
+      Printf.printf "\n";
+      let instrs = Procdesc.Node.get_instrs head in
+      Instrs.pp Pp.text F.std_formatter instrs;
+      traverse_succs tail;
+    end
+  in
+  let print_succs node =
+    Printf.printf "Successor of Node ";
+    Procdesc.Node.pp_id F.std_formatter (Procdesc.Node.get_id node);
+    Printf.printf ": \n";
+    let succs = Procdesc.Node.get_succs node in
+    traverse_succs succs
+  in
+  (* let rec traverse_instrs instrs =
+    match instrs with
+    | [] -> ()
+    | head :: tail ->
+    begin
+      (* match head with
+      | Sil.Load {id= lhs_id; e= rhs_exp} ->
+          Printf.printf "Load %s %s\n" (Ident.to_string lhs_id) (Exp.to_string rhs_exp);
+      | Sil.Store {e1= Lvar lhs_pvar; e2= rhs_exp} ->
+        Printf.printf "Store: %s %s\n" (Pvar.to_string lhs_pvar) (Exp.to_string rhs_exp); *)
+      traverse_instrs tail
+    end
+  in *)
+  let print_instr instr =
+    match instr with
+    | Sil.Load {id= lhs_id; e= rhs_exp} ->
+        Printf.printf "Load %s %s\n" (Ident.to_string lhs_id) (Exp.to_string rhs_exp);
+    | Sil.Store {e1= Lvar lhs_pvar; e2= rhs_exp} ->
+      Printf.printf "Store: %s %s\n" (Pvar.to_string lhs_pvar) (Exp.to_string rhs_exp);
+    | Sil.Prune (cond, _, true_branch, _) ->
+      Printf.printf "Prune (%s, %b)\n" (Exp.to_string cond) true_branch;
+    | _ -> ();
+  in
+  let print_node node =
+    (* Printf.printf "Node ";
+    Procdesc.Node.pp_id F.std_formatter (Procdesc.Node.get_id node);
+    Printf.printf ":\n"; *)
+    let instrs = Procdesc.Node.get_instrs node in
+    (* Instrs.pp Pp.text F.std_formatter instrs *)
+      Instrs.iter ~f:print_instr instrs
+
+  in
   let passed_by_ref_invariant_map = get_passed_by_ref_invariant_map proc_desc in
   let cfg = CFG.from_pdesc proc_desc in
   let invariant_map = CheckerAnalyzer.exec_cfg cfg proc_desc ~initial:Domain.bottom in
@@ -530,6 +592,14 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
             () )
   in
   Container.iter cfg ~fold:CFG.fold_nodes ~f:report_on_node;
-  print_effect_list !effectList 0;
-  compare_prior_effects !effectList 0;
-  compare_future_effects !effectList 0;
+  (* let nodes = Procdesc.get_nodes proc_desc in
+  List.iter ~f: print_succs nodes *)
+  let nodes = Procdesc.get_nodes proc_desc in
+  List.iter ~f: print_node nodes
+  (* let start_node = Procdesc.get_start_node proc_desc in
+  let succs = Procdesc.Node.get_succs start_node in
+  List.iter ~f: print_node succs *)
+
+  (* print_effect_list !effectList 0; *)
+  (* compare_prior_effects !effectList 0;
+  compare_future_effects !effectList 0; *)

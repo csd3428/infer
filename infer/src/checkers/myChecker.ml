@@ -474,7 +474,13 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
       Instrs.iter ~f:(is_in_instrs instr in_instrs) node_instrs;
       if(!in_instrs) then
         true
-      else is_in_nodes instr tail
+      else
+      begin
+        Printf.printf "%s not in node: " (get_instr_string instr);
+        Instrs.pp Pp.text F.std_formatter node_instrs;
+        Printf.printf "\n";
+        is_in_nodes instr tail
+      end
     end    
   in
   let rec is_instr_in_list instr list =
@@ -485,6 +491,16 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
       if(Sil.equal_instr instr head) then
         true
       else is_instr_in_list instr tail
+    end
+  in
+  let rec print_preds preds =
+    match preds with
+    | [] -> ()
+    | head :: tail ->
+    begin
+      let node_instrs = Procdesc.Node.get_instrs head in
+      Instrs.pp Pp.text F.std_formatter node_instrs;
+      print_preds tail
     end
   in
   (* TODO: remove count parameter *)
@@ -500,7 +516,7 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
         begin
           head.futureEffect <- List.append head.futureEffect [currInstr];
         let instrStr = get_instr_string currInstr in
-        Printf.printf "////////////////////////////////////////////////////////// Append %s to %d\n" instrStr count;  
+        (* Printf.printf "////////////////////////////////////////////////////////// Append %s to %d\n" instrStr count;   *)
         append_future_effects tail preds currInstr (count + 1)
         end
       end
@@ -509,12 +525,18 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
   in
   let rec append_to_preds curr_node instr =
     let preds = Procdesc.Node.get_preds curr_node in
+    (* Printf.printf "\027[0;31mPreds of\027[0m ";
+    Procdesc.Node.pp_id F.std_formatter (Procdesc.Node.get_id curr_node);
+    Printf.printf ":\n";
+    Printf.printf "Append instr %s\n" (get_instr_string instr); *)
     append_future_effects !effectList preds instr 0;
     let rec traverse_preds preds =
       match preds with
       | [] -> ()
       | head :: tail ->
       begin
+        let node_instrs = Procdesc.Node.get_instrs head in
+        (* Instrs.pp Pp.text F.std_formatter node_instrs; *)
         append_to_preds head instr;
         traverse_preds tail
       end
@@ -582,25 +604,27 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
     | [] -> ()
     | head :: tail ->
     begin
-      Printf.printf "Node ";
+      (* Printf.printf "Node ";
       Procdesc.Node.pp_id F.std_formatter (Procdesc.Node.get_id head);
-      Printf.printf "\n";
+      Printf.printf "\n"; *)
       if((Procdesc.Node.get_id head) != (Procdesc.Node.get_id start_node)) then
         let instrs = Procdesc.Node.get_instrs head in
-          Instrs.pp Pp.text F.std_formatter instrs;
+          (* Instrs.pp Pp.text F.std_formatter instrs; *)
           Instrs.iter ~f:(append_effect head) instrs;
       else ();
       traverse_succs start_node tail;
     end
   in
-  let print_succs start_node node =
-    Printf.printf "Successor of Node ";
+  let add_current_effects node =
+    (* Printf.printf "Successor of Node ";
     Procdesc.Node.pp_id F.std_formatter (Procdesc.Node.get_id node);
-    Printf.printf ": \n";
+    Printf.printf ": \n"; *)
     let instrs = Procdesc.Node.get_instrs node in
     let instrs_in_node = ref 1 in
     (* Instrs.pp Pp.text F.std_formatter instrs; *)
     Instrs.iter ~f:(add_effect instrs_in_node) instrs;
+  in
+  let add_future_effects start_node node =
     let succs = Procdesc.Node.get_succs node in
     traverse_succs start_node succs
   in
@@ -694,7 +718,8 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
   Container.iter cfg ~fold:CFG.fold_nodes ~f:report_on_node;
   let nodes = Procdesc.get_nodes proc_desc in
   let start_node = list_get_first nodes in
-  List.iter ~f: (print_succs start_node) nodes;
+  List.iter ~f: add_current_effects nodes;
+  List.iter ~f: (add_future_effects start_node) nodes;
   (* let nodes = Procdesc.get_nodes proc_desc in
   List.iter ~f: print_node nodes *)
   (* let start_node = Procdesc.get_start_node proc_desc in

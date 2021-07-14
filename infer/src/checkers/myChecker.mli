@@ -31,5 +31,6 @@ val is_always_in_scope : Procdesc.t -> Pvar.t -> bool
 type effectTuple = {
   mutable priorEffect : Sil.instr list;
   mutable currentEffect : Sil.instr;
-  mutable futureEffect : Sil.instr list
+  mutable futureEffect : Sil.instr list;
+  index : int
 }

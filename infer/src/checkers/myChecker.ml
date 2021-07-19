@@ -55,7 +55,7 @@ let rec print_list list index counter mode =
     print_list body index (counter+1) "prior";
   end
 
-let rec print_effect_list list counter =
+let rec print_effect_list list =
   match list with
   | [] -> ()
   | head :: body ->
@@ -64,7 +64,7 @@ let rec print_effect_list list counter =
     Printf.printf "-> \027[0;32mε%d:\027[0m %s -> " head.index (get_instr_string head.currentEffect);
     print_list head.futureEffect head.index 0 "future";
     Printf.printf "\n";
-    print_effect_list body (counter+1);
+    print_effect_list body;
   end
 
 let rec list_exists list instr =
@@ -87,27 +87,27 @@ let rec list_contains needle haystack =
         else list_contains body haystack;
       end
 
-let rec compare_with_prior_effects list effect =
+let rec compare_rest_prior_effects list effect =
   match list with
   | [] -> print_endline ""
   | head :: tail ->
   begin
     if(list_contains effect.priorEffect head.priorEffect) then
       Printf.printf "α%d < α%d | " effect.index head.index
-    else compare_with_prior_effects tail effect
+    else compare_rest_prior_effects tail effect
   end
 
-let rec compare_with_future_effects list effect =
+let rec compare_rest_future_effects list effect =
   match list with
   | [] -> print_endline ""
   | head :: tail ->
   begin
     if(list_contains head.futureEffect effect.futureEffect) then
       Printf.printf "ω%d > ω%d | " effect.index head.index
-    else compare_with_future_effects tail effect
+    else compare_rest_future_effects tail effect
   end
 
-let rec compare_prior_effects list counter =
+let rec compare_prior_effects list =
   match list with
   | [] -> print_endline ""
   | [last] -> print_endline ""
@@ -119,11 +119,11 @@ let rec compare_prior_effects list counter =
       Printf.printf "α%d < α%d | " first_eff.index (list_get_first rest_effs).index
     else if(list_contains next first_prior_eff) then
       Printf.printf "α%d < α%d | " (list_get_first rest_effs).index first_eff.index 
-    else compare_with_prior_effects rest_effs first_eff;
-    compare_prior_effects rest_effs (counter+1);
+    else compare_rest_prior_effects rest_effs first_eff;
+    compare_prior_effects rest_effs;
   end
 
-let rec compare_future_effects list counter =
+let rec compare_future_effects list =
   match list with
   | [] -> print_endline ""
   | [last] -> print_endline ""
@@ -135,8 +135,8 @@ let rec compare_future_effects list counter =
       Printf.printf "ω%d > ω%d | " first_eff.index (list_get_first rest_effs).index
     else if(list_contains first_future_effect next) then
       Printf.printf "ω%d > ω%d | " (list_get_first rest_effs).index first_eff.index
-    else compare_with_future_effects rest_effs first_eff;
-    compare_future_effects rest_effs (counter+1);
+    else compare_rest_future_effects rest_effs first_eff;
+    compare_future_effects rest_effs;
   end
 
 module VarSet = AbstractDomain.FiniteSet (Var)
@@ -310,28 +310,6 @@ module TransferFunctions (LConfig : MyCheckerConfig) (CFG : ProcCfg.S) = struct
     let actuals = List.map actuals ~f:(fun (e, _) -> Exp.ignore_cast e) in
     List.fold actuals ~f:(fun acc_ exp -> exp_add_live exp acc_) ~init:live_acc
 
-  let rec get_future_effects list futures =
-    match list with
-    | [] -> !futures
-    | head :: body ->
-    begin
-      futures := head.currentEffect :: !futures;
-      get_future_effects body futures
-    end
-
-  let rec append_prior_effects list currInstr =
-    match list with
-    | [] -> []
-    | head :: body ->
-    begin
-      head.priorEffect <- currInstr :: head.priorEffect;
-      append_prior_effects body currInstr
-    end
-
-  let print_node node =
-    let instrs = Procdesc.Node.get_instrs node in
-    Instrs.pp Pp.text F.std_formatter instrs
-
   let exec_instr astate proc_desc _ _ = function
     | Sil.Load {id= lhs_id} when Ident.is_none lhs_id ->
         (* dummy deref inserted by frontend--don't count as a read *)
@@ -466,28 +444,6 @@ let ignored_constants =
 
 
 let checker {IntraproceduralAnalysis.proc_desc; err_log} =
-  (* let rec traverse_instrs instrs =
-    match instrs with
-    | [] -> ()
-    | head :: tail ->
-    begin
-      (* match head with
-      | Sil.Load {id= lhs_id; e= rhs_exp} ->
-          Printf.printf "Load %s %s\n" (Ident.to_string lhs_id) (Exp.to_string rhs_exp);
-      | Sil.Store {e1= Lvar lhs_pvar; e2= rhs_exp} ->
-        Printf.printf "Store: %s %s\n" (Pvar.to_string lhs_pvar) (Exp.to_string rhs_exp); *)
-      traverse_instrs tail
-    end
-  in *)
-  let rec get_future_effects list futures =
-    match list with
-    | [] -> !futures
-    | head :: body ->
-    begin
-      futures := head.currentEffect :: !futures;
-      get_future_effects body futures
-    end
-  in
   let is_in_instrs instr in_instrs node_instr =
     if(Sil.equal_instr instr node_instr) then
       in_instrs := true
@@ -502,13 +458,7 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
       Instrs.iter ~f:(is_in_instrs instr in_instrs) node_instrs;
       if(!in_instrs) then
         true
-      else
-      begin
-        (* Printf.printf "%s not in node: " (get_instr_string instr);
-        Instrs.pp Pp.text F.std_formatter node_instrs;
-        Printf.printf "\n"; *)
-        is_in_nodes instr tail
-      end
+      else is_in_nodes instr tail
     end    
   in
   let rec is_instr_in_list instr list =
@@ -521,18 +471,7 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
       else is_instr_in_list instr tail
     end
   in
-  let rec print_preds preds =
-    match preds with
-    | [] -> ()
-    | head :: tail ->
-    begin
-      let node_instrs = Procdesc.Node.get_instrs head in
-      Instrs.pp Pp.text F.std_formatter node_instrs;
-      print_preds tail
-    end
-  in
-  (* TODO: remove count parameter *)
-  let rec append_future_effects list preds currInstr count =
+  let rec append_future_effects list preds currInstr =
     match list with
     | [] -> ()
     | head :: tail ->
@@ -542,13 +481,13 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
         (* check if instruction is already appended *)
         if(not(is_instr_in_list currInstr head.futureEffect)) then
         begin
+          (* Sil.pp_instr ~print_types:true Pp.text F.std_formatter currInstr;
+          Printf.printf "\t -> %s\n" (get_instr_string head.currentEffect); *)
           head.futureEffect <- List.append head.futureEffect [currInstr];
-        let instrStr = get_instr_string currInstr in
-        (* Printf.printf "////////////////////////////////////////////////////////// Append %s to %d\n" instrStr count;   *)
-        append_future_effects tail preds currInstr (count + 1)
+          append_future_effects tail preds currInstr
         end
       end
-      else append_future_effects tail preds currInstr (count + 1)
+      else append_future_effects tail preds currInstr
     end
   in
   let rec append_prior_effects list succs currInstr =
@@ -562,98 +501,150 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
         if(not(is_instr_in_list currInstr head.priorEffect)) then
         begin
           head.priorEffect <- List.append head.priorEffect [currInstr];
-        let instrStr = get_instr_string currInstr in
-        (* Printf.printf "////////////////////////////////////////////////////////// Append %s to %d\n" instrStr count;   *)
-        append_prior_effects tail succs currInstr
+          append_prior_effects tail succs currInstr
         end
       end
       else append_prior_effects tail succs currInstr
     end
   in
-  let rec append_to_preds curr_node instr =
+  let rec node_exists node list =
+    match list with
+    | [] -> false
+    | head :: tail ->
+    begin
+      if(Procdesc.Node.equal head node) then
+        true
+      else node_exists node tail
+    end
+  in
+  let rec append_to_preds curr_node instr nodes_appended =
+  (* print_effect_list !effectList; *)
     let preds = Procdesc.Node.get_preds curr_node in
-    (* Printf.printf "\027[0;31mPreds of\027[0m ";
-    Procdesc.Node.pp_id F.std_formatter (Procdesc.Node.get_id curr_node);
-    Printf.printf ":\n";
-    Printf.printf "Append instr %s\n" (get_instr_string instr); *)
-    append_future_effects !effectList preds instr 0;
-    let rec traverse_preds preds =
+    append_future_effects !effectList preds instr;
+    let rec visit_preds preds =
       match preds with
       | [] -> ()
       | head :: tail ->
       begin
-        let node_instrs = Procdesc.Node.get_instrs head in
-        (* Instrs.pp Pp.text F.std_formatter node_instrs; *)
-        append_to_preds head instr;
-        traverse_preds tail
+        (* FIXME: INFINITE LOOP *)
+        if(not(node_exists head nodes_appended)) then
+        begin
+          append_to_preds head instr (head :: nodes_appended);
+          visit_preds tail;
+        end
+        else visit_preds tail
       end
-    in traverse_preds preds
+    in visit_preds preds;
+    (* Printf.printf "++++++ Instr = %s\n" (get_instr_string instr); *)
   in
   let rec append_to_succs curr_node instr =
     let succs = Procdesc.Node.get_succs curr_node in
-    (* Printf.printf "\027[0;31mPreds of\027[0m ";
-    Procdesc.Node.pp_id F.std_formatter (Procdesc.Node.get_id curr_node);
-    Printf.printf ":\n";
-    Printf.printf "Append instr %s\n" (get_instr_string instr); *)
     append_prior_effects !effectList succs instr;
-    let rec traverse_succs succs =
+    let rec visit_succs succs =
       match succs with
       | [] -> ()
       | head :: tail ->
       begin
         let node_instrs = Procdesc.Node.get_instrs head in
-        (* Instrs.pp Pp.text F.std_formatter node_instrs; *)
         append_to_succs head instr;
-        traverse_succs tail
+        visit_succs tail
       end
-    in traverse_succs succs
+    in visit_succs succs
+  in
+  let append_instr list mode instr =
+    match list with
+    | [] -> ()
+    | first_eff :: sec_eff :: _ ->
+    begin
+      if(mode == "future") then
+      begin
+        (* check if instruction is already appended *)
+        if(not(is_instr_in_list sec_eff.currentEffect first_eff.futureEffect)) then
+          first_eff.futureEffect <- List.append first_eff.futureEffect [sec_eff.currentEffect]
+      end
+      else
+      begin
+        (* check if instruction is already appended *)
+        if(not(is_instr_in_list first_eff.currentEffect sec_eff.priorEffect)) then
+          sec_eff.priorEffect <- List.append sec_eff.priorEffect [first_eff.currentEffect]
+      end
+    end
+  in
+  let rec append_instr_in_same_node list instrs mode =
+    match list with
+    | [] -> ()
+    | head :: tail ->
+    begin
+      let reversed_instrs = Instrs.reverse_order instrs in
+      let first_instr = Instrs.last reversed_instrs |> Option.value ~default:Sil.skip_instr in
+      if(Sil.equal_instr first_instr head.currentEffect) then
+      begin
+        Instrs.iter ~f:(append_instr (head :: tail) mode) instrs;
+        append_instr_in_same_node tail instrs mode
+      end
+      else append_instr_in_same_node tail instrs mode
+    end
+  in
+  (* count only interested instructions *)
+  let count_node_instrs count instr =
+    match instr with
+    | Sil.Load {id= lhs_id; e= rhs_exp} ->
+      count := !count + 1
+    | Sil.Store {e1= Lvar lhs_pvar; e2= rhs_exp} ->
+      count := !count + 1
+    | Sil.Prune (cond, _, true_branch, _) -> 
+      count := !count + 1
+    | _ -> ()
+  in
+  let append_same_node_instrs curr_node mode =
+    let curr_node_instrs = Procdesc.Node.get_instrs curr_node in
+    let instrs_in_node = ref 0 in
+    Instrs.iter ~f:(count_node_instrs instrs_in_node) curr_node_instrs;
+    if((!instrs_in_node > 1)) then
+      append_instr_in_same_node !effectList curr_node_instrs mode
   in
   let append_effect curr_node mode instr =
     match instr with
     | Sil.Load {id= lhs_id; e= rhs_exp} ->
     begin
       if(mode == "future") then
-        append_to_preds curr_node instr
-      else append_to_succs curr_node instr
+      begin
+        append_to_preds curr_node instr [];
+        append_same_node_instrs curr_node mode
+      end
+      else
+      begin
+        append_to_succs curr_node instr;
+        append_same_node_instrs curr_node mode
+      end
     end
     | Sil.Store {e1= Lvar lhs_pvar; e2= rhs_exp} ->
     begin
       if(mode == "future") then
-        append_to_preds curr_node instr
-      else append_to_succs curr_node instr
+      begin
+        append_to_preds curr_node instr [];
+        append_same_node_instrs curr_node mode
+      end
+      else
+      begin
+        append_to_succs curr_node instr;
+        append_same_node_instrs curr_node mode
+      end
     end
     | Sil.Prune (cond, _, true_branch, _) ->
     begin
       if(mode == "future") then
-        append_to_preds curr_node instr
-      else append_to_succs curr_node instr
+      begin
+        append_to_preds curr_node instr [];
+        append_same_node_instrs curr_node mode
+      end
+      else
+      begin
+        append_to_succs curr_node instr;
+        append_same_node_instrs curr_node mode
+      end
     end
     | _ -> ();
-  in
-  let rec append_rest_node_instrs num_of_instrs_appended instrs_in_node list instr =
-    match list with
-    | [] -> ()
-    | head :: body ->
-    begin
-      if(num_of_instrs_appended < (instrs_in_node - 1)) then
-      begin
-        head.futureEffect <- List.append head.futureEffect [instr];
-        append_rest_node_instrs (num_of_instrs_appended+1) instrs_in_node body instr
-      end
-      else ();
-    end
-  in
-  let rec append_prior_rest_node_instrs num_of_instrs_appended instrs_in_node list prev =
-    match list with
-    | [] -> ()
-    | head :: body ->
-    begin
-      if(num_of_instrs_appended < (instrs_in_node - 1)) then
-      begin
-        head.priorEffect <- prev :: head.priorEffect;
-        append_prior_rest_node_instrs (num_of_instrs_appended+1) instrs_in_node body prev
-      end
-    end
   in
   let reverse_list list =
     let rec rev_acc acc = function
@@ -666,55 +657,27 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
     match instr with
     | Sil.Load {id= lhs_id; e= rhs_exp} ->
       let effect = { priorEffect = []; currentEffect = instr; futureEffect = []; index = !instrCounter } in
-      append_rest_node_instrs 0 !instrs_in_node (reverse_list !effectList) instr;
-      if((List.length !effectList) > 0) then
-        let prev = (list_get_first (reverse_list !effectList)).currentEffect in
-        effectList := List.append !effectList [effect];
-        append_prior_rest_node_instrs 0 !instrs_in_node (reverse_list !effectList) prev;
-      else effectList := List.append !effectList [effect];
-      instrs_in_node := !instrs_in_node + 1;
+      effectList := List.append !effectList [effect];
       instrCounter := !instrCounter + 1
     | Sil.Store {e1= Lvar lhs_pvar; e2= rhs_exp} ->
       let effect = { priorEffect = []; currentEffect = instr; futureEffect = []; index = !instrCounter } in
-      append_rest_node_instrs 0 !instrs_in_node (reverse_list !effectList) instr;
-      if((List.length !effectList) > 0) then
-        let prev = (list_get_first (reverse_list !effectList)).currentEffect in
-        effectList := List.append !effectList [effect];
-        append_prior_rest_node_instrs 0 !instrs_in_node (reverse_list !effectList) prev;
-      else effectList := List.append !effectList [effect];
-      instrs_in_node := !instrs_in_node + 1;
+      effectList := List.append !effectList [effect];
       instrCounter := !instrCounter + 1
     | Sil.Prune (cond, _, true_branch, _) ->
       let effect = { priorEffect = []; currentEffect = instr; futureEffect = []; index = !instrCounter } in
-      append_rest_node_instrs 0 !instrs_in_node (reverse_list !effectList) instr;
-      if((List.length !effectList) > 0) then
-        let prev = (list_get_first (reverse_list !effectList)).currentEffect in
-        effectList := List.append !effectList [effect];
-        append_prior_rest_node_instrs 0 !instrs_in_node (reverse_list !effectList) prev;
-      else effectList := List.append !effectList [effect];
-      instrs_in_node := !instrs_in_node + 1;
+      effectList := List.append !effectList [effect];
       instrCounter := !instrCounter + 1
     | _ -> ();
   in
-  (* let print_node node =
-    (* Printf.printf "Node ";
-    Procdesc.Node.pp_id F.std_formatter (Procdesc.Node.get_id node);
-    Printf.printf ":\n"; *)
-    let instrs = Procdesc.Node.get_instrs node in
-    (* Instrs.pp Pp.text F.std_formatter instrs *)
-      Instrs.iter ~f:print_instr instrs
-  in *)
   let rec traverse_succs start_node succs =
     match succs with
     | [] -> ()
     | head :: tail ->
     begin
-      (* Printf.printf "Node ";
-      Procdesc.Node.pp_id F.std_formatter (Procdesc.Node.get_id head);
-      Printf.printf "\n"; *)
+      (* let node_instrs = Procdesc.Node.get_instrs head in
+      Instrs.pp Pp.text F.std_formatter node_instrs; *)
       if((Procdesc.Node.get_id head) != (Procdesc.Node.get_id start_node)) then
         let instrs = Procdesc.Node.get_instrs head in
-          (* Instrs.pp Pp.text F.std_formatter instrs; *)
           Instrs.iter ~f:(append_effect head "future") instrs;
       else ();
       traverse_succs start_node tail;
@@ -731,15 +694,33 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
     end
   in
   let add_current_effects node =
-    (* Printf.printf "Successor of Node ";
-    Procdesc.Node.pp_id F.std_formatter (Procdesc.Node.get_id node);
-    Printf.printf ": \n"; *)
     let instrs = Procdesc.Node.get_instrs node in
     let instrs_in_node = ref 1 in
-    (* Instrs.pp Pp.text F.std_formatter instrs; *)
     Instrs.iter ~f:(add_effect instrs_in_node) instrs;
   in
   let add_future_effects start_node node =
+    (* Printf.printf "Node: \n";
+    let node_instrs = Procdesc.Node.get_instrs node in
+    Instrs.pp Pp.text F.std_formatter node_instrs; *)
+    Printf.printf "%s\n" (Procdesc.Node.get_description Pp.text node);
+    let kind = Procdesc.Node.get_kind node in
+    let print_kind =
+      match kind with
+      | Stmt_node stmt_nodekind ->
+        (* let print_node = 
+          match stmt_nodekind with
+          | LoopBody ->
+            Printf.printf "%s\n" (Procdesc.Node.get_description Pp.text node);
+          | ConditionalStmtBranch ->
+            Printf.printf "Conditional statement branch====================\n"
+          | DeclStmt ->
+            Printf.printf "Declaration statement\n"
+          | _ -> Printf.printf "Not found stmt_nodekind\n"
+        in () *)
+        Format.fprintf F.std_formatter "Test dsfnsdfajknsfdkasdnfkj %a\n" Procdesc.Node.pp_stmt stmt_nodekind;
+        Printf.printf "%s\n" (Procdesc.Node.get_description Pp.text node);
+      | _ -> Printf.printf "Not found kind\n"
+    in
     let succs = Procdesc.Node.get_succs node in
     traverse_succs start_node succs
   in
@@ -839,9 +820,9 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
   let start_node = list_get_first nodes in
   List.iter ~f: add_current_effects nodes;
   List.iter ~f: (add_future_effects start_node) nodes;
-  List.iter ~f: (add_prior_effects) nodes;
+  (* List.iter ~f: (add_prior_effects) nodes; *)
 
-  print_effect_list !effectList 0;
+  print_effect_list !effectList;
   print_endline "";
-  compare_prior_effects !effectList 0;
-  compare_future_effects !effectList 0;
+  (* compare_prior_effects !effectList; *)
+  compare_future_effects !effectList;

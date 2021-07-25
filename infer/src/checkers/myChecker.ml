@@ -445,6 +445,10 @@ let ignored_constants =
 
 let checker {IntraproceduralAnalysis.proc_desc; err_log} =
   let is_in_instrs instr in_instrs node_instr =
+    (* match instr with
+    | Sil.Store {e1: Exp.t; root_typ: Typ.t; typ: Typ.t; e2: Exp.t} ->
+      Printf.printf "%s == %s -> currInstr = %s\n" (get_instr_string instr) (get_instr_string node_instr) (get_instr_string currInstr);
+    | _ -> (); *)
     if(Sil.equal_instr instr node_instr) then
       in_instrs := true
   in
@@ -476,17 +480,13 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
     | [] -> ()
     | head :: tail ->
     begin
-      if(is_in_nodes head.currentEffect preds) then
-      begin
-        (* check if instruction is already appended *)
-        if(not(is_instr_in_list currInstr head.futureEffect)) then
+      (* check if instruction is already appended *)
+      if(not(is_instr_in_list currInstr head.futureEffect) &&
+        (is_in_nodes head.currentEffect preds)) then
         begin
-          (* Sil.pp_instr ~print_types:true Pp.text F.std_formatter currInstr;
-          Printf.printf "\t -> %s\n" (get_instr_string head.currentEffect); *)
           head.futureEffect <- List.append head.futureEffect [currInstr];
           append_future_effects tail preds currInstr
         end
-      end
       else append_future_effects tail preds currInstr
     end
   in
@@ -495,15 +495,13 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
     | [] -> ()
     | head :: tail ->
     begin
-      if(is_in_nodes head.currentEffect succs) then
-      begin
-        (* check if instruction is already appended *)
-        if(not(is_instr_in_list currInstr head.priorEffect)) then
+      (* check if instruction is already appended *)
+      if(not(is_instr_in_list currInstr head.priorEffect) &&
+        (is_in_nodes head.currentEffect succs)) then
         begin
           head.priorEffect <- List.append head.priorEffect [currInstr];
           append_prior_effects tail succs currInstr
         end
-      end
       else append_prior_effects tail succs currInstr
     end
   in
@@ -526,7 +524,6 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
       | [] -> ()
       | head :: tail ->
       begin
-        (* FIXME: INFINITE LOOP *)
         if(not(node_exists head nodes_appended)) then
         begin
           append_to_preds head instr (head :: nodes_appended);
@@ -535,9 +532,8 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
         else visit_preds tail
       end
     in visit_preds preds;
-    (* Printf.printf "++++++ Instr = %s\n" (get_instr_string instr); *)
   in
-  let rec append_to_succs curr_node instr =
+  let rec append_to_succs curr_node instr nodes_appended =
     let succs = Procdesc.Node.get_succs curr_node in
     append_prior_effects !effectList succs instr;
     let rec visit_succs succs =
@@ -545,9 +541,11 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
       | [] -> ()
       | head :: tail ->
       begin
-        let node_instrs = Procdesc.Node.get_instrs head in
-        append_to_succs head instr;
-        visit_succs tail
+        if(not(node_exists head nodes_appended)) then
+        begin
+          append_to_succs head instr (head :: nodes_appended);
+          visit_succs tail
+        end
       end
     in visit_succs succs
   in
@@ -614,7 +612,7 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
       end
       else
       begin
-        append_to_succs curr_node instr;
+        append_to_succs curr_node instr [];
         append_same_node_instrs curr_node mode
       end
     end
@@ -627,7 +625,7 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
       end
       else
       begin
-        append_to_succs curr_node instr;
+        append_to_succs curr_node instr [];
         append_same_node_instrs curr_node mode
       end
     end
@@ -640,7 +638,7 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
       end
       else
       begin
-        append_to_succs curr_node instr;
+        append_to_succs curr_node instr [];
         append_same_node_instrs curr_node mode
       end
     end
@@ -699,28 +697,6 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
     Instrs.iter ~f:(add_effect instrs_in_node) instrs;
   in
   let add_future_effects start_node node =
-    (* Printf.printf "Node: \n";
-    let node_instrs = Procdesc.Node.get_instrs node in
-    Instrs.pp Pp.text F.std_formatter node_instrs; *)
-    Printf.printf "%s\n" (Procdesc.Node.get_description Pp.text node);
-    let kind = Procdesc.Node.get_kind node in
-    let print_kind =
-      match kind with
-      | Stmt_node stmt_nodekind ->
-        (* let print_node = 
-          match stmt_nodekind with
-          | LoopBody ->
-            Printf.printf "%s\n" (Procdesc.Node.get_description Pp.text node);
-          | ConditionalStmtBranch ->
-            Printf.printf "Conditional statement branch====================\n"
-          | DeclStmt ->
-            Printf.printf "Declaration statement\n"
-          | _ -> Printf.printf "Not found stmt_nodekind\n"
-        in () *)
-        Format.fprintf F.std_formatter "Test dsfnsdfajknsfdkasdnfkj %a\n" Procdesc.Node.pp_stmt stmt_nodekind;
-        Printf.printf "%s\n" (Procdesc.Node.get_description Pp.text node);
-      | _ -> Printf.printf "Not found kind\n"
-    in
     let succs = Procdesc.Node.get_succs node in
     traverse_succs start_node succs
   in
@@ -820,9 +796,9 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
   let start_node = list_get_first nodes in
   List.iter ~f: add_current_effects nodes;
   List.iter ~f: (add_future_effects start_node) nodes;
-  (* List.iter ~f: (add_prior_effects) nodes; *)
+  List.iter ~f: (add_prior_effects) nodes;
 
   print_effect_list !effectList;
   print_endline "";
-  (* compare_prior_effects !effectList; *)
+  compare_prior_effects !effectList;
   compare_future_effects !effectList;

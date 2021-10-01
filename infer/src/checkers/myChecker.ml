@@ -16,6 +16,8 @@ type effectTuple = {
   index : int
 }
 
+let total_execution_time = ref 0.0
+
 let effectList = ref []
 let instrCounter = ref 0
 
@@ -792,6 +794,7 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
             () )
   in
   Container.iter cfg ~fold:CFG.fold_nodes ~f:report_on_node;
+  let start_time = Unix.gettimeofday () in
   let nodes = Procdesc.get_nodes proc_desc in
   let start_node = list_get_first nodes in
   List.iter ~f: add_current_effects nodes;
@@ -802,3 +805,7 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
   print_endline "";
   compare_prior_effects !effectList;
   compare_future_effects !effectList;
+  let end_time = Unix.gettimeofday () in
+  let execution_time = end_time -. start_time in
+  total_execution_time := (!total_execution_time +. execution_time);
+  Printf.printf "\027[0;36mExecution time = %fs \n Total time = %fs\027[0m\n" execution_time !total_execution_time
